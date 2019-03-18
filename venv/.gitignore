@@ -1,2 +1,3 @@
 .ipynbb_checkpoints/
-.vscode
+.vscode/
+__pycache__/
