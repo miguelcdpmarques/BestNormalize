@@ -15,7 +15,6 @@ class BestNormalize(BaseEstimator, TransformerMixin):
         self.variables = variables
         self.allow_quantile = allow_quantile
         self.scores = []
-
         # if plot: plot both the histogram with the normal fit line and the QQ plots.
         # if verbose: print information about the test statistics
         
@@ -34,27 +33,25 @@ class BestNormalize(BaseEstimator, TransformerMixin):
                 self.scores.extend([[column] + self.test_transformation_quantile(data)])
         self.scores = pd.DataFrame(data=self.scores, 
                         columns=['Variable','Transformation','Score','Approx. Normal?'])
-        if y:
-            self.scores.extend([[y.index] + self.test_transformation_log(y.dropna())])
         return self
     
     def transform(self, X, y=None):
-        if self.standardize:
-            scaler = StandardScaler()
-            X = pd.DataFrame(data=scaler.fit_transform(X), columns=X.columns)
         map_transformation = {'original': lambda x: x, 'log': self.apply_transformation_log,
                     'sqrt': self.apply_transformation_sqrt, 'exp': self.apply_transformation_exp,
-                    'arcsin': self.apply_transformation_arcsin, 'yeo-johnson': self.apply_transformation_yeo_johnson,
+                    'arcsin': self.apply_transformation_arcsin, 
+                    'yeo-johnson': self.apply_transformation_yeo_johnson,
                     'boxcox': self.apply_transformation_boxcox, 'quantile':self.apply_transformation_quantile}
         for column in X.columns:
             transformation = self.best_scores[self.best_scores['Variable']==column]['Transformation'].iloc[0]
             X[column] = map_transformation[transformation](X[column])
-        if y:
-            transformation = self.best_scores[self.best_scores['Variable']==y.index]['Transformation'].iloc[0]
-            y = y.apply(map_transformation[transformation])
-            return X, y
+        if self.standardize:
+            self.scaler = StandardScaler()
+            X = pd.DataFrame(data=self.scaler.fit_transform(X), columns=X.columns)
         return X
     
+    def inverse_transform(self, X):
+        pass
+
     def init_scores(self, X):
         for column in X.columns:
             data = X[column].dropna()
@@ -98,8 +95,8 @@ class BestNormalize(BaseEstimator, TransformerMixin):
         return ['arcsin'] + self.gaussian_metric(_data)
 
     def test_transformation_yeo_johnson(self, data):
-        self._pt = PowerTransformer(method='yeo-johnson', standardize=False, copy=True)
-        _data = self._pt.fit_transform(np.array(data).reshape(-1,1))
+        pt = PowerTransformer(method='yeo-johnson', standardize=False, copy=True)
+        _data = pt.fit_transform(np.array(data).reshape(-1,1))
         return ['yeo-johnson'] + self.gaussian_metric(_data)
 
     def test_transformation_boxcox(self, data):
@@ -134,9 +131,11 @@ class BestNormalize(BaseEstimator, TransformerMixin):
     @staticmethod
     def apply_transformation_arcsin(x):
         return np.log(x + np.sqrt(x**2 + 1))
-    
-    def apply_transformation_yeo_johnson(self, x):
-        return self._pt.transform(np.array(x).reshape(-1,1))
+
+    @staticmethod
+    def apply_transformation_yeo_johnson(x):
+        pt = PowerTransformer(method='yeo-johnson', standardize=False, copy=True)
+        return pt.fit_transform(np.array(x).reshape(-1,1))
 
     @staticmethod
     def apply_transformation_boxcox(x):
@@ -149,6 +148,7 @@ class BestNormalize(BaseEstimator, TransformerMixin):
         return quantile_transform(np.array(x).reshape(-1,1), output_distribution='normal')
 
 
+### mention transformation applied in each case
 
 if __name__ == '__main__':
     housing = pd.read_csv('datasets/housing.csv')
