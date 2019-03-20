@@ -8,8 +8,8 @@ import IPython
 
 
 class BestNormalize(BaseEstimator, TransformerMixin):
-    
-    def __init__(self, standardize=True, variables='all', allow_quantile=True, plot=False, verbose=False): 
+
+    def __init__(self, standardize=True, variables='all', allow_quantile=True, plot=False, verbose=False):
         # no *args or **kwargs
         self.standardize = standardize
         self.variables = variables
@@ -18,7 +18,7 @@ class BestNormalize(BaseEstimator, TransformerMixin):
         self.transformation_margins = {}
         # if plot: plot both the histogram with the normal fit line and the QQ plots.
         # if verbose: print information about the test statistics
-        
+
     def fit(self, X, y=None):
         self.init_scores(X)
         X = X.select_dtypes(include=np.number)
@@ -32,14 +32,15 @@ class BestNormalize(BaseEstimator, TransformerMixin):
             #self.scores.extend([[column] + self.test_transformation_boxcox(data)])
             if self.allow_quantile:
                 self.scores.extend([[column] + self.test_transformation_quantile(data)])
-        self.scores = pd.DataFrame(data=self.scores, 
+        self.scores = pd.DataFrame(data=self.scores,
                         columns=['Variable','Transformation','Score','Approx. Normal?'])
         return self
-    
+
     def transform(self, X, y=None):
+        X = X.copy()
         map_transformation = {'original': self.apply_no_transformation, 'log': self.apply_transformation_log,
                     'sqrt': self.apply_transformation_sqrt, 'exp': self.apply_transformation_exp,
-                    'arcsin': self.apply_transformation_arcsin, 
+                    'arcsin': self.apply_transformation_arcsin,
                     'yeo-johnson': self.apply_transformation_yeo_johnson,
                     'boxcox': self.apply_transformation_boxcox, 'quantile':self.apply_transformation_quantile}
         for column in X.columns:
@@ -49,11 +50,12 @@ class BestNormalize(BaseEstimator, TransformerMixin):
             self.scaler = StandardScaler()
             X = pd.DataFrame(data=self.scaler.fit_transform(X), columns=X.columns)
         return X
-    
+
     def inverse_transform(self, X):
+        X = X.copy()
         if self.standardize:
             X = pd.DataFrame(data=self.scaler.inverse_transform(X), columns=X.columns)
-        map_inverse_transformation = {'original': self.apply_no_transformation, 
+        map_inverse_transformation = {'original': self.apply_no_transformation,
                     'log': self.apply_inverse_transformation_log}
         for column in X.columns:
             transformation = self.best_scores[self.best_scores['Variable']==column]['Transformation'].iloc[0]
@@ -64,7 +66,7 @@ class BestNormalize(BaseEstimator, TransformerMixin):
         for column in X.columns:
             data = X[column].dropna()
             self.scores.extend([[column, 'original'] + self.gaussian_metric(data)])
-            
+
     def gaussian_metric(self, data):
         alpha = 0.05
         stat, p = normaltest(data)
@@ -72,25 +74,25 @@ class BestNormalize(BaseEstimator, TransformerMixin):
             stat, p = stat.item(), p.item()
         test_score = [stat, (p > alpha)]
         return test_score
-    
+
     @property
     def best_scores(self):
         return self.scores.iloc[self.scores.groupby('Variable')['Score'].idxmin()]
-    
+
     def test_transformation_log(self, data):
         a = 1
         if min(data) <= 0:
             a = (min(data) * -1) + 1
         _data = np.log(data + a)
         return ['log'] + self.gaussian_metric(_data)
-    
+
     def test_transformation_sqrt(self, data):
         a = 1
         if min(data) <= 0:
             a = (min(data) * -1) + 1
         _data = np.sqrt(data + a)
         return ['sqrt'] + self.gaussian_metric(_data)
-    
+
     def test_transformation_exp(self, data):
         try:
             _data = data.apply(lambda x: math.exp(x))
@@ -127,10 +129,10 @@ class BestNormalize(BaseEstimator, TransformerMixin):
         if min(x) <= 0:
             self.transformation_margins[x.name] = (min(x) * -1) + 1
         return np.log(x + self.transformation_margins[x.name])
-    
+
     def apply_inverse_transformation_log(self, x):
-        return np.exp(x - self.transformation_margins[x.name])
-        
+        return np.exp(x) - self.transformation_margins[x.name]
+
     @staticmethod
     def apply_transformation_sqrt(x):
         a = 1
@@ -149,7 +151,7 @@ class BestNormalize(BaseEstimator, TransformerMixin):
     @staticmethod
     def apply_transformation_yeo_johnson(x):
         pt = PowerTransformer(method='yeo-johnson', standardize=False, copy=True)
-        return pt.fit_transform(np.array(x).reshape(-1,1))
+        return pt.fit_transform(np.array(x).reshape(-1, 1))
 
     @staticmethod
     def apply_transformation_boxcox(x):
@@ -159,19 +161,20 @@ class BestNormalize(BaseEstimator, TransformerMixin):
 
     @staticmethod
     def apply_transformation_quantile(x):
-        return quantile_transform(np.array(x).reshape(-1,1), output_distribution='normal')
+        return quantile_transform(np.array(x).reshape(-1, 1), output_distribution='normal')
 
 
 ### mention transformation applied in each case
 
 if __name__ == '__main__':
     housing = pd.read_csv('datasets/housing.csv')
-    housing_num = housing.select_dtypes(include=np.number).drop(['latitude','longitude'], axis=1)
+    housing_num = housing.select_dtypes(include=np.number).drop(['latitude', 'longitude'], axis=1)
 
     bestNormalize = BestNormalize(allow_quantile=False)
     housing_num_transformed = bestNormalize.fit_transform(housing_num)
     housing_num_inverse = bestNormalize.inverse_transform(housing_num_transformed)
     print(bestNormalize.best_scores)
-    print(np.allclose(housing_num, housing_num_inverse))
+    print(np.allclose(housing_num, housing_num_inverse, equal_nan=True))
     print(housing_num[:5])
     print(housing_num_inverse[:5])
+
